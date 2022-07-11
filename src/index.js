@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { GridFSBucket, MongoClient } from 'mongodb'
 import fs from 'fs'
+import fileupload from "express-fileupload";
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -14,16 +15,17 @@ const Url = "mongodb+srv://Sai_AWS:7024899020Ra@cluster0.jdovpis.mongodb.net/?re
 const client = new MongoClient(Url)
 
 app.use(express.json())
-app.use(cors)
+app.use(cors())
+app.use(fileupload())
+let db = null
 
 app.listen(5000,async () => {
     console.log('Server is Listening at Port 5000')
     client.connect()
 
-    const db = client.db('FilesData')
-    const collection = db.collection('Files')
-    const data = await collection.find({}).limit(10).toArray()
-    console.log(data)
+    db = client.db('FilesData')
+    // const collection = db.collection('Files')
+    // const data = await collection.find({}).limit(10).toArray()
 
     const bucket = new GridFSBucket(db,{bucketName:"Images"})
     // fs.createReadStream(`${__dirname}/Images/image.jpg`).
@@ -35,12 +37,34 @@ app.listen(5000,async () => {
     //         }
     //     }))
 
-    const cursor = bucket.find({})
-    cursor.forEach(doc => console.log(doc._id))
 
-    bucket.openDownloadStreamByName("image").
-        pipe(fs.createWriteStream(`${__dirname}/Images/file.jpg`))
+
+    const cursor = bucket.find({})
+    cursor.forEach(doc => {
+
+        console.log(doc.filename)
+
+        bucket.openDownloadStreamByName(doc.filename).
+        pipe(fs.createWriteStream(`${__dirname}/Images/${doc.filename}`))
+    })
     
 })
 
-// ObjectId("62caf665a3e33c3e7c6ef6e9")
+app.post('/data', async (req, res) => {
+    console.log('/data Called')
+    // console.log(`${__dirname}/Images/${req.files.Image.name}`)
+    const Image = req.files.Image
+    Image.mv(`${__dirname}/Images/${Image.name}`,Image.name)
+
+    console.log(Image)
+
+    const bucket = new GridFSBucket(db,{bucketName:"Images"})
+    fs.createReadStream(`${__dirname}/Images/${req.files.Image.name}`).
+        pipe(bucket.openUploadStream(`${Image.name}`,{
+            chunkSizeBytes:1048576,
+            metadata:{
+                name : Image.name
+            }
+        }))
+
+})
